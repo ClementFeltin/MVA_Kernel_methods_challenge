@@ -43,19 +43,6 @@ def compute_b(K, y, mu_support, idx_support):
     b = np.mean(y_support - np.sum(mu_support*y_support*K_support,axis=1))
     return b
 
-def coordinate_descent(mu_init, grad_i, prox_g_i, step_i, n_features, n_iter, callback =None):
-    mu= mu_init.copy()
-    mu_new= mu_init.copy()
-
-    for k in range(n_iter):
-        i = np.random.randint(n_features)
-        grad = grad_i(mu,i)
-        mu_new[i] -= grad/model.H[i,i]
-        mu[i] = prox_g_i(mu_new,i)
-
-    idx_support = np.where(np.abs(mu) > 1e-5)[0]
-    mu_support = mu[idx_support]
-    return mu_support, idx_support
 
 class SVM_cvxopt(object):
     """A class for solving with cvxopt the linear SVM dual problem without intercept """
@@ -74,8 +61,66 @@ class SVM_cvxopt(object):
         self.b = compute_b(K, y, self.mu_support, self.idx_support)
 
     def predict(X):
-        G = kernel(X, self.X_support)
-        decision = G.dot(self.mu_support * self.y_support) + self.b
+        decision = self.G.dot(self.mu_support * self.y_support) + self.b
         y_pred = np.sign(decision)
         return(y_pred)
+
+    def predict_margin(X):
+        decision = self.G.dot(self.mu_support * self.y_support) + self.b
+        return(decision)
+
+def coordinate_descent(mu_init, grad_i, prox_g_i, step_i, n_features, n_iter):
+    mu= mu_init.copy()
+    mu_new= mu_init.copy()
+
+    for k in range(n_iter):
+        i = np.random.randint(n_features)
+        grad = grad_i(mu,i)
+        mu_new[i] -= grad/model.H[i,i]
+        mu[i] = prox_g_i(mu_new,i)
+
+    idx_support = np.where(np.abs(mu) > 1e-5)[0]
+    mu_support = mu[idx_support]
+    return mu_support, idx_support
+
+class SVM_cd(object):
+    pass
+
+class SVM_multiclass(object):
+
+    def __init__(self,kernel,C,nb_classes,solver='cvxopt'):
+        self.kernel = kernel
+        self.C = C
+        self.clf = []
+        self.nb_classes=nb_classes
+
+    def fit(X,y):
+        self.clf=[]
+        for i in range(self.nb_classes):
+            y_train = (y==i)*np.ones(y.shape[0])
+            if solver=='cvxopt':
+                clfi = SVM_cvxopt(self.kernel,self.C)
+            else:
+                clfi = SVM_cd(self.kernel,self.C)
+            clfi.fit(X,y_train)
+            self.clf.add(clfi)
+
+    def predict(X):
+        predictions = np.asarray([self.clf[i].predict_margin(X) for i in range(self.nb_classes)])
+        return np.argmax(predictions,axis=1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
