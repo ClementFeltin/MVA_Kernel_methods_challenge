@@ -47,27 +47,38 @@ def compute_b(K, y, mu_support, idx_support):
 class SVM_cvxopt(object):
     """A class for solving with cvxopt the linear SVM dual problem without intercept """
 
-    def __init__(self,kernel,C):
+    def __init__(self,kernel,C,K):
         self.kernel = kernel
         self.C = C
+        self.K = K
 
     def fit(self,X,y):
-        K = self.kernel(X,X)
-        self.mu_support, self.idx_support = svm_solver(K, y,C=self.C)
-        G = np.multiply(y,X.T).T
+        #print("Computing kernel matrix...")
+        #K = self.kernel(X,X)
+        #print("done")
+        print("Computing mu")
+        self.mu_support, self.idx_support = svm_solver(self.K, y,C=self.C)
         self.y_support = y[self.idx_support]
         self.X_support = X[self.idx_support]
-        self.w = np.dot(self.mu_support,G[self.idx_support])
-        self.b = compute_b(K, y, self.mu_support, self.idx_support)
+        print("Computing b")
+        self.b = compute_b(self.K, y, self.mu_support, self.idx_support)
 
     def predict(self,X):
+        print("Computing kernel matrix...")
         G = self.kernel(X, self.X_support)
+        print("Computing decision...")
         decision = G.dot(self.mu_support * self.y_support) + self.b
         y_pred = np.sign(decision)
         return(y_pred)
+    
+    def score(self,X,y):
+        y_pred = self.predict(X)
+        return(np.mean(y==y_pred))
 
     def predict_margin(self,X):
+        print("Computing kernel matrix...")
         G = self.kernel(X, self.X_support)
+        print("Computing decision...")
         decision = G.dot(self.mu_support * self.y_support) + self.b
         return(decision)
 
@@ -90,26 +101,37 @@ class SVM_cd(object):
 
 class SVM_multiclass(object):
 
-    def __init__(self,kernel,C,nb_classes,solver='cvxopt'):
+    def __init__(self,kernel,C,nb_classes=10,solver='cvxopt'):
         self.kernel = kernel
         self.C = C
         self.clf = []
         self.nb_classes=nb_classes
+        self.solver=solver
 
-    def fit(X,y):
+    def fit(self,X,y,precomputed=False,p_kernel=None):
+        if precomputed:
+            self.K = p_kernel
+        else:
+            print("Computing kernel matrix")
+            self.K = self.kernel(X,X)
+        print("Fitting all classifiers")
         self.clf=[]
         for i in range(self.nb_classes):
-            y_train = (y==i)*np.ones(y.shape[0])
-            if solver=='cvxopt':
-                clfi = SVM_cvxopt(self.kernel,self.C)
+            y_train = (y==i)*np.ones(y.shape[0])-(y!=i)*np.ones(y.shape[0])
+            if self.solver=='cvxopt':
+                clfi = SVM_cvxopt(self.kernel,self.C,self.K)
             else:
-                clfi = SVM_cd(self.kernel,self.C)
+                clfi = SVM_cd(self.kernel,self.C,self.K)
             clfi.fit(X,y_train)
             self.clf.append(clfi)
 
-    def predict(X):
+    def predict(self,X):
         predictions = np.asarray([self.clf[i].predict_margin(X) for i in range(self.nb_classes)])
-        return np.argmax(predictions,axis=1)
+        return np.argmax(predictions,axis=0)
+    
+    def score(self,X,y):
+        y_pred = self.predict(X)
+        return np.mean(y==y_pred)
 
 
 
