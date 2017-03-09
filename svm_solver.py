@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import cvxopt as cvx
+import cvxopt
 from scipy.linalg import svd
 
-def qp(H, e, A, b, C=np.inf, l=1e-8, verbose=True):
+def qp(H, e, A,y, b, C=np.inf, l=1e-8, verbose=True):
     # Gram matrix
     n = H.shape[0]
     H = cvxopt.matrix(H)
@@ -27,12 +27,12 @@ def qp(H, e, A, b, C=np.inf, l=1e-8, verbose=True):
     return mu
 
 def svm_solver(K, y, C=np.inf):
-    n = X.shape[0]
+    n = K.shape[0]
     H = y*((y*K).T)
     e = np.ones(n)
     A = y.reshape((1,-1))
     b = 0
-    mu = qp(H, e, A, b, C, l=1e-8, verbose=False)
+    mu = qp(H, e, A,y, b, C, l=1e-8, verbose=False)
     idx_support = np.where(np.abs(mu) > 1e-5)[0]
     mu_support = mu[idx_support]
     return mu_support, idx_support
@@ -51,22 +51,24 @@ class SVM_cvxopt(object):
         self.kernel = kernel
         self.C = C
 
-    def fit(X,y):
-        self.K = self.kernel(X,X)
-        self.mu_support, self.idx_support = svm_solver(self.K, y)
-        self.G = np.multiply(y,X.T).T
+    def fit(self,X,y):
+        K = self.kernel(X,X)
+        self.mu_support, self.idx_support = svm_solver(K, y,C=self.C)
+        G = np.multiply(y,X.T).T
         self.y_support = y[self.idx_support]
         self.X_support = X[self.idx_support]
-        self.w = np.dot(self.mu_support,self.G[self.idx_support])
+        self.w = np.dot(self.mu_support,G[self.idx_support])
         self.b = compute_b(K, y, self.mu_support, self.idx_support)
 
-    def predict(X):
-        decision = self.G.dot(self.mu_support * self.y_support) + self.b
+    def predict(self,X):
+        G = self.kernel(X, self.X_support)
+        decision = G.dot(self.mu_support * self.y_support) + self.b
         y_pred = np.sign(decision)
         return(y_pred)
 
-    def predict_margin(X):
-        decision = self.G.dot(self.mu_support * self.y_support) + self.b
+    def predict_margin(self,X):
+        G = self.kernel(X, self.X_support)
+        decision = G.dot(self.mu_support * self.y_support) + self.b
         return(decision)
 
 def coordinate_descent(mu_init, grad_i, prox_g_i, step_i, n_features, n_iter):
@@ -103,7 +105,7 @@ class SVM_multiclass(object):
             else:
                 clfi = SVM_cd(self.kernel,self.C)
             clfi.fit(X,y_train)
-            self.clf.add(clfi)
+            self.clf.append(clfi)
 
     def predict(X):
         predictions = np.asarray([self.clf[i].predict_margin(X) for i in range(self.nb_classes)])
